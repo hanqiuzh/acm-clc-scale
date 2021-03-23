@@ -23,6 +23,7 @@ import (
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -30,6 +31,8 @@ var kubeconfig string
 var prefix = "mock-cluster-"
 var numConcurrent = 1
 var qps float32 = 100.
+//hubCfg hold the input rest.Config, which will be used to retrive masterUrl
+var hubCfg *rest.Config
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -92,5 +95,7 @@ func createDynamicClient() dynamic.Interface {
 	if err != nil {
 		panic(err)
 	}
+
+	hubCfg = config
 	return client
 }
