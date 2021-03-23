@@ -139,8 +139,42 @@ spec:
 }
 
 type MockClusterClient struct {
-	Client dynamic.Interface
-	Prefix string
+	Client              dynamic.Interface
+	Prefix              string
+	SpokeClientRegistry map[string]dynamic.Interface
+	mux                 *sync.Mutex
+}
+
+func (m *MockClusterClient) GetClient(name string) dynamic.Interface {
+	if name == "" {
+		return m.Client
+	}
+
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	sClt, ok := m.SpokeClientRegistry[name]
+	if !ok {
+		return m.Client
+	}
+
+	return sClt
+}
+
+func NewMockClusterClient(hubClt dynamic.Interface, prefix string) *MockClusterClient {
+	return &MockClusterClient{
+		Client:              hubClt,
+		Prefix:              prefix,
+		SpokeClientRegistry: map[string]dynamic.Interface{},
+		mux:                 &sync.Mutex{},
+	}
+}
+
+func (m *MockClusterClient) UpdateSpokeClientRegistry(sClt dynamic.Interface, name string) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	m.SpokeClientRegistry[name] = sClt
 }
 
 var gvrKlusterletAddonConfig = schema.GroupVersionResource{Group: "agent.open-cluster-management.io", Version: "v1", Resource: "klusterletaddonconfigs"}
@@ -281,7 +315,7 @@ func (m *MockClusterClient) MarkManifestWorksInstalled(name string) error {
 	}
 	var retErr error = nil
 	for _, item := range l.Items {
-		if err := setManifestWorkAppliedStatus(m.Client, item.GetName(), name, 10, 0); err != nil {
+		if err := setManifestWorkAppliedStatus(m.GetClient(name), item.GetName(), name, 10, 0); err != nil {
 			retErr = err
 		}
 	}
@@ -296,7 +330,7 @@ func (m *MockClusterClient) SetClusterOnline(name string) error {
 		`{"type":"HubAcceptedManagedCluster","lastTransitionTime":"2020-01-01T01:01:01Z","message":"Accepted by hub cluster admin","status":"True","reason":"HubClusterAdminAccepted"}` +
 		`]}}`
 
-	_, err := m.Client.Resource(gvrManagedCluster).Namespace("").Patch(context.TODO(), name, types.MergePatchType, []byte(patchString), metav1.PatchOptions{}, "status")
+	_, err := m.GetClient(name).Resource(gvrManagedCluster).Namespace("").Patch(context.TODO(), name, types.MergePatchType, []byte(patchString), metav1.PatchOptions{}, "status")
 	return err
 
 }
@@ -319,7 +353,7 @@ func newLease(name, namespace string, renewTime string) *unstructured.Unstructur
 }
 
 func (m *MockClusterClient) UpdateLeases(name string) error {
-	// list leases in that namespace
+ 	// list leases in that namespace
 	l, err := m.Client.Resource(gvrLease).Namespace(name).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		fmt.Printf("error %v\n", err)
@@ -331,7 +365,7 @@ func (m *MockClusterClient) UpdateLeases(name string) error {
 	var retErr error = nil
 	for _, item := range l.Items {
 		n := item.GetName()
-		if _, err := m.Client.Resource(gvrLease).Namespace(name).Patch(context.TODO(), n, types.MergePatchType, []byte(patchString), metav1.PatchOptions{}); err != nil {
+		if _, err :=  m.GetClient(name).Resource(gvrLease).Namespace(name).Patch(context.TODO(), n, types.MergePatchType, []byte(patchString), metav1.PatchOptions{}); err != nil {
 			retErr = err
 		}
 	}

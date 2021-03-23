@@ -22,6 +22,7 @@ import (
 
 	"github.com/hanqiuzh/acm-clc-scale/mockcluster/pkg/utils"
 	"github.com/spf13/cobra"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var sleepSeconds = 10
@@ -41,9 +42,11 @@ var addCmd = &cobra.Command{
 			return
 		}
 		clusterDynamicClient := createDynamicClient()
-		m := utils.MockClusterClient{
-			Client: clusterDynamicClient,
-			Prefix: prefix,
+		m := utils.NewMockClusterClient(clusterDynamicClient, prefix)
+
+		hClt, err := client.New(hubCfg, client.Options{})
+		if err != nil {
+			fmt.Errorf("failed to create hub client, err :%v", err)
 		}
 
 		if keepAlive {
@@ -79,7 +82,19 @@ var addCmd = &cobra.Command{
 					if err != nil {
 						fmt.Printf("error adding %d: %v\n", j, err)
 					}
+
+					m.SpokeClientRegistry[name] = m.Client
 					time.Sleep(time.Second * time.Duration(sleepSeconds))
+
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						sClt, err := utils.WiatForSpokeSa(hClt, hubCfg.Host, name)
+						if err == nil {
+							m.UpdateSpokeClientRegistry(sClt, name)
+							fmt.Println("spoke client generated")
+						}
+					}()
 				}
 				wg.Done()
 			}(i)
