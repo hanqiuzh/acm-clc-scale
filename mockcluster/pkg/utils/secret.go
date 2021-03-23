@@ -85,6 +85,8 @@ func WiatForSpokeSa(hClt client.Client, masterUrl, cluster string) (dynamic.Inte
 	tk := time.NewTicker(time.Second * 5)
 	timeOut := time.After(time.Second * 90)
 
+	defer tk.Stop()
+
 	for {
 		select {
 		case <-tk.C:
